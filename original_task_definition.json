@@ -1,0 +1,30 @@
+{
+    "family": "prisma-runtime-defense",
+    "containerDefinitions": [
+        {
+            "name": "my-container",
+            "image": "123123123123.dkr.ecr.eu-east-1.amazonaws.com/test:latest",
+            "essential": true,
+            "portMappings": [
+                {
+                    "containerPort": 3000,
+                    "hostPort": 3000,
+                    "protocol": "tcp"
+                }
+            ],
+            "cpu": 256,
+            "memory": 512,
+            "networkMode": "awsvpc",
+            "requiresCompatibilities": [
+                "FARGATE"
+            ],
+            "entryPoint": [
+                "sh",
+                "-c"
+            ],
+            "command": [
+                "hello"
+            ]
+        }
+    ]
+}
