@@ -7,6 +7,8 @@ Before starting here are a few prerequisites:
 -	A deployed container image in AWS ECR.
 -	A fargate task json file (‘original_task_defnition.json’) – I have included an example in the repo.
 
+To find the Prisma Cloud endpoints appropriate to your tenant visit (https://pan.dev/prisma-cloud/api/cwpp/defenders/)
+
 Prisma Cloud Runtime defense is imperative because it safeguards your app against threats which emerge after deployment. It is noteworthy that embedding a defender in your fargate task also instantiates vulnerability scanning and visibility into compliance risks. In laymens terms, Prisma deploys a side car container which runs alongside your task, in conjunction the entrypoint of you task is changed to twistlock, wrapping your container similar to what happens when embedding a Prisma Cloud serverless defender on an AWS Lambda function. 
 (https://docs.prismacloud.io/en/classic/compute-admin-guide/install/deploy-defender/app-embedded/install-app-embedded-defender-fargate)
 
