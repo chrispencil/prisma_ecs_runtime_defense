@@ -1,0 +1,119 @@
+trigger:
+- main
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+- group: 'ProtectedFargateTask'
+- group: AWS_TR_DEV
+
+stages:
+- stage: Get_Protected_Task
+  displayName: 'Get the new task definition and store it in the repo or build directory'
+  jobs:
+  - job: Get_protected_task
+    displayName: Get_protected_task
+    steps:
+    - script: sudo apt-get update && sudo apt-get -y install jq
+      displayName: 'Install jq'
+    - task: CmdLine@2
+      inputs:
+        script: |
+          #!/bin/bash
+
+          # Define the API endpoints
+          AUTH_API_ENDPOINT=${AUTH_API_ENDPOINT}
+          TASK_GENERATION_API_ENDPOINT=${TASK_GENERATION_API_ENDPOINT}
+
+          # Define the headers for the requests
+          HEADERS=(-H "Content-Type: application/json")
+          AUTH_HEADER=(-H "Authorization: Bearer ${BEARER_TOKEN}")
+          TASK_GENERATION_HEADERS=(${HEADERS[@]} ${AUTH_HEADER[@]} -H 'Accept: */*' -H 'Content-Type: application/json')
+
+          # Function to send a POST request and return the response
+          send_request() {
+            local url=$1
+            shift
+            local response=$(curl -s -X POST "$url" "${HEADERS[@]}" -d @request_body.json)
+            echo "$response"
+          }
+
+          # Function to write the task definition to a file
+          write_task_definition() {
+            local response=$1
+            echo "$response" | /usr/bin/jq '.containerDefinitions' > protectedtask.json
+          }
+
+          # Obtain the bearer token
+          echo "Obtaining Bearer Token..."
+          BEARER_TOKEN=$(curl -s -X POST "$AUTH_API_ENDPOINT" \
+            -H "Content-Type: application/json" \
+            -d "{\"username\":\"${TL_USER}\",\"password\":\"${TL_PASS}\"}" | jq -r '.token')
+
+          echo "Bearer Token: $BEARER_TOKEN"
+
+          # Prepare the request body for generating the Fargate task
+          cat <<EOF > request_body.json
+          {
+            "consoleaddr": "${TL_CONSOLE}",
+            "defenderType": "appEmbedded",
+          }
+          EOF
+
+          # Generate the Fargate task definition
+          echo "Generating Fargate Task..."
+          TASK_DEFINITION_JSON=$(curl -X 'POST' -H "Authorization: Bearer $BEARER_TOKEN" -H 'Accept: */*' -H 'Content-Type: application/json' --data-binary "@original_task_definition.json" "$TASK_GENERATION_API_ENDPOINT?consoleaddr=${TL_CONSOLE}&defenderType=appEmbedded" | /usr/bin/jq)
+
+          # Write the task definition to a file
+          write_task_definition "$TASK_DEFINITION_JSON"
+
+          pwd
+          cd /home/vsts/work/1/
+          cat protectedtask.json
+          echo "Generated protectedtask.json at $(pwd)"
+
+    #Publish artifact 
+    - task: PublishBuildArtifacts@1
+      inputs:
+        PathtoPublish: 'protectedtask.json'
+        ArtifactName: 'ProtectedTaskArtifact'
+
+- stage: Download_Artifact_and_run_terraform
+  displayName: 'Get the new task definition and store it'
+  jobs:
+  - job: Download_artifact_and_run_terraform
+    displayName: "Download artifact and run terraform"
+    steps:
+    - task: DownloadBuildArtifacts@0
+      inputs:
+        buildType: 'current'
+        downloadPath: '$(System.ArtifactsDirectory)'
+        artifactName: 'ProtectedTaskArtifact'
+        targetPath: '$(System.ArtifactsDirectory)/protectedtask.json'
+
+    - script: |
+        FILE_PATH="$(System.ArtifactsDirectory)/ProtectedTaskArtifact/protectedtask.json"
+
+        cat ProtectedTaskArtifact/protectedtask.json
+
+        # Check if the file exists before proceeding
+        if [ ! -f "$FILE_PATH" ]; then
+          echo "Error: protectedtask.json does not exist at $FILE_PATH."
+          exit 1
+        fi
+
+        # Set the TF_VAR_task_definition_path environment variable
+        export TF_VAR_task_definition_path="$FILE_PATH"
+
+        # Initialize Terraform
+        terraform init
+
+        # Apply Terraform configuration
+        terraform apply -auto-approve || { echo 'Terraform apply failed'; exit 1; }
+      displayName: 'Deploy to AWS'
+
+
+
+
+
